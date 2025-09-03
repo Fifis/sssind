@@ -1,14 +1,15 @@
 # title: "Replication codes for Table 1 and Figure 1"
 # author: "Andreï V. Kostyrka (andrei.kostyrka@gmail.com)"
-# date: '4th of June 2025'
-# Tested with R v. 4.5.0 and pnd v. 0.1.0
+# date: '4th of September 2025'
+# Tested with R v. 4.5.1 and pnd v. 0.1.1
 
 rm(list = ls())
 tryCatch(setwd("~/Dropbox/HSE/14/pnd/wydss/"), error = function(e) return(NULL))
 
 # For EXACT replication of the results, use the SAME package version
+# Warning: this option is aggressive and may overwrite your existing installed pnd
 library(devtools)
-devtools::install_version("pnd", "0.1.0")
+devtools::install_version("pnd", "0.1.1")
 
 library(pnd)
 library(parallel)
@@ -52,7 +53,7 @@ k <- 1
 # 1:8
 for (k in c(1:8)) {
   print(k)
-
+  
   if (k == 1) {
     f  <- sin
     fp <- cos
@@ -119,12 +120,12 @@ for (k in c(1:8)) {
     xse <- c(1e-2, 1e+1)
     flab <- "illsin"
   }
-
+  
   set.seed(1)
   xgrid <- sort(runif(n, min = xsl[1], max = xsl[2]))
   xax.vals <- pretty(xsl)
   xl <- xsl
-
+  
   # Analytical minimiser of etrunc + eround under certain assumptions
   fHopt <- function(x) {
     f1 <- f(x)
@@ -135,14 +136,14 @@ for (k in c(1:8)) {
     v <- (-0.5*f(x-h) + 0.5*f(x+h)) / h
     return(list(par = h, value = v))
   }
-
+  
   fHRoT  <- function(x) {
     ltt <- x < .Machine$double.eps^(1/3)
     h <- .Machine$double.eps^(1/3) * (max(1, abs(x)))
     v <- (-0.5*f(x-h) + 0.5*f(x+h)) / h
     return(list(par = h, value = v))
   }
-
+  
   me <- .Machine$double.eps / 2
   # Set cores <- 1 to get overhead-free timings
   t.opt    <- system.time(getHopt    <- mclapply(xgrid, function(x) fHopt(x = x), mc.cores = 1))
@@ -154,19 +155,19 @@ for (k in c(1:8)) {
   t.SW     <- system.time(getHSW     <- mclapply(xgrid, function(x) step.SW(x = x, FUN = f, max.rel.error = me), mc.cores = cores))
   t.M      <- system.time(getHM      <- mclapply(xgrid, function(x) step.M(x = x, FUN = f, max.rel.error = me), mc.cores = cores))
   t.K      <- system.time(getHK      <- mclapply(xgrid, function(x) step.K(x = x, FUN = f, max.rel.error = me), mc.cores = cores))
-
+  
   tms <- c(t.opt[3], t.RoT[3], t.CR[3], t.CRm[3], t.DV[3], t.SW[3], t.M[3], t.K[3])
   ms <- tms / length(xgrid) * 1000
-
+  
   res <- list(getHopt, getHRoT, getHplugin, getHCR, getHCRm, getHDV, getHSW, getHM, getHK)
   names(res) <- c("opt", "RoT", "plugin", "CR", "CRm", "DV", "SW", "M", "K")
-
+  
   h <- do.call(cbind, lapply(res, function(x) unlist(lapply(x, "[[", "par"))))
-
+  
   # d <- apply(h, 2, function(x) tryCatch(density(log10(x), bw = "bcv"), error = function(e) density(log10(x), bw = "nrd")))
   # plot(NULL, NULL, xlim = range(unlist(lapply(d, "[[", "x"))), ylim = range(unlist(lapply(d, "[[", "y"))), bty = "n")
   # for (i in 1:ncol(h)) lines(d[[i]], col = i %% 6 + 1, lty = i %% 5 + 1, lwd = 1.5)
-
+  
   for (i in 1:ncol(h)) {
     if (all(!is.finite(h[, i]))) next
     plot(xgrid, log10(h[, i]), log = if (linear) "" else "x", col = i %% 6 + 1, main = colnames(h)[i], pch = ".", ylim = quantile(log10(h[is.finite(h)]), c(0.01, 0.99)))
@@ -175,22 +176,22 @@ for (k in c(1:8)) {
     lines(xgrid, l, col = i %% 6 + 1, lwd = 2)
     # Sys.sleep(1)
   }
-
+  
   g.true <- fp(xgrid)
   g <- do.call(cbind, lapply(res, function(x) unlist(lapply(x, "[[", "value"))))
-
-
+  
+  
   err <- g.true - g
   abserr  <- as.data.frame(abs(err))
   absrerr <- as.data.frame(abs(err / g.true))
-
-  jj <- c(6, 7, 9)
-
+  
+  jj <- c(6, 7, 8, 9)
+  
   cat(paste0(sprintf("%1.2e", apply(absrerr, 2, median)[jj]), collapse = " & "), "\n")
-
+  
   ranks <- t(apply(absrerr[, jj], 1, rank))
-  cat("New = best in", 100*mean(ranks[, "K"] == 1), "%\n")
-
+  cat("New = best in", 100*mean(ranks[, "K"] == apply(ranks, 1, min)), "%\n")
+  
   lxgrid <- if (!linear) log10(xgrid) else xgrid
   labserr <- log10(abserr)
   labserr[labserr == -Inf] <- min(unlist(labserr)[is.finite(unlist(labserr))])
@@ -199,10 +200,10 @@ for (k in c(1:8)) {
     if (all(is.nan(y))) return(xnice * NA)
     predict(loess(y ~ lxgrid, degree = 1, family = "symmetric",
                   control = loess.control(surface = "direct"), span = 0.2), newdata = xnice)
-    }, mc.cores = cores))
-
+  }, mc.cores = cores))
+  
   mycols <- c("#ebce2b", "#702c8c", "#db6917", "#96cde6", "#ba1c30", "#c0bd7f", "#7f7e80", "#5fa641", "#d485b2", "#4277b6")
-
+  
   # One plot with everything
   cairo_pdf(paste0("compare-methods-", flab, "-", if (linear) "lin" else "exp", ".pdf"), imgh/90, imgv/60)
   par(mar = c(4, 4, 0, 0) + .1)
@@ -210,5 +211,5 @@ for (k in c(1:8)) {
   matplot(if (linear) xnice else 10^xnice, l, type = "l", log = if (linear) "" else "x", lty = 1:5, col = mycols, lwd = 2, xlab = "Evaluation point", ylab = "log10(|error|)", bty = "n")
   legend("top", legend = colnames(abserr), ncol = 4, lwd = 2, col = mycols, lty = 1:5, bg = "#FFFFFFCC", box.col = "#FFFFFF00")
   dev.off()
-
+  
 }
